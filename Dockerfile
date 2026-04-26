@@ -28,32 +28,31 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+# Install Chrome via official Google repo
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+      | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] \
+      http://dl.google.com/linux/chrome/deb/ stable main" \
+      > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
-    && apt-get install -y /tmp/chrome.deb \
-    && rm /tmp/chrome.deb \
+    && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
-
-# Install ChromeDriver that matches Chrome
-RUN CHROME_VERSION=$(google-chrome --version | sed 's/Google Chrome //') \
-    && CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$(echo $CHROME_VERSION | cut -d. -f1)") \
-    && wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" \
-    && unzip chromedriver_linux64.zip -d /usr/local/bin/ \
-    && rm chromedriver_linux64.zip \
-    && chmod +x /usr/local/bin/chromedriver
 
 # Set working directory
 WORKDIR /app
 
 # Copy and install Python dependencies
+# selenium>=4.10 ships with selenium-manager which auto-downloads ChromeDriver
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-warm selenium-manager so it downloads ChromeDriver at build time
+RUN python -c "from selenium import webdriver; from selenium.webdriver.chrome.options import Options; o=Options(); o.add_argument('--headless'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage'); webdriver.Chrome(options=o).quit()" || true
 
 # Copy app files
 COPY . .
 
-# Expose port (Railway sets $PORT automatically)
+# Expose port
 EXPOSE 8000
 
 # Start the app
